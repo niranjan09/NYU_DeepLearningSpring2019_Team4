@@ -69,6 +69,7 @@ def create_session(config_dict=dict(), force_as_default=False):
         for field in fields[:-1]:
             obj = getattr(obj, field)
         setattr(obj, fields[-1], value)
+    setattr(config, 'allow_soft_placement', True)
     session = tf.Session(config=config)
     if force_as_default:
         session._default_session = session.as_default()
