@@ -34,7 +34,9 @@ def get_weight(shape, gain=np.sqrt(2), use_wscale=False, fan_in=None):
 def dense(x, fmaps, gain=np.sqrt(2), use_wscale=False):
     if len(x.shape) > 2:
         x = tf.reshape(x, [-1, np.prod([d.value for d in x.shape[1:]])])
+    #print(x.shape, fmaps)
     w = get_weight([x.shape[1].value, fmaps], gain=gain, use_wscale=use_wscale)
+    #print(x.shape, fmaps, w.shape)
     w = tf.cast(w, x.dtype)
     return tf.matmul(x, w)
 
@@ -160,7 +162,6 @@ def G_paper(
     fused_scale         = True,         # True = use fused upscale2d + conv2d, False = separate upscale2d layers.
     structure           = None,         # 'linear' = human-readable, 'recursive' = efficient, None = select automatically.
     is_template_graph   = False,        # True = template graph constructed by the Network class, False = actual evaluation.
-#     c_matrix, # C matrix for InfoGAN
     **kwargs):                          # Ignore unrecognized keyword args.
     
     resolution_log2 = int(np.log2(resolution))
@@ -246,7 +247,6 @@ def D_paper(
     fused_scale         = True,         # True = use fused conv2d + downscale2d, False = separate downscale2d layers.
     structure           = None,         # 'linear' = human-readable, 'recursive' = efficient, None = select automatically
     is_template_graph   = False,        # True = template graph constructed by the Network class, False = actual evaluation.
-#     c_matrix, # C matrix for InfoGAN
     **kwargs):                          # Ignore unrecognized keyword args.
     
     resolution_log2 = int(np.log2(resolution))
@@ -282,48 +282,11 @@ def D_paper(
                     x = act(apply_bias(conv2d(x, fmaps=nf(res-1), kernel=3, use_wscale=use_wscale)))
                 with tf.variable_scope('Dense0'):
                     x = act(apply_bias(dense(x, fmaps=nf(res-2), use_wscale=use_wscale)))
-#                     x = tf.Print(x, [x], message="x")
-#                     q3, q4, q5 = qNetwork(x, res)
                 global qInputB
                 qInputB = tf.identity(x)
                 with tf.variable_scope('Dense1'):
                     x = apply_bias(dense(x, fmaps=1+label_size, gain=1, use_wscale=use_wscale))
             return x
-    
-#     def qNetwork(qInput, res):
-#         with tf.variable_scope('%dx%d' % (2**res, 2**res)):
-#             q3 = tf.identity(qInput)
-#             q4 = tf.identity(qInput)
-#             q5 = tf.identity(qInput)
-        
-#             with tf.variable_scope('DenseQ31'):
-#                 q3 = act(apply_bias(dense(q3, fmaps=256, use_wscale=use_wscale)))
-#             with tf.variable_scope('DenseQ32'):
-#                 q3 = act(apply_bias(dense(q3, fmaps=128, use_wscale=use_wscale)))
-#             with tf.variable_scope('DenseQ33'):
-#                 q3 = act(apply_bias(dense(q3, fmaps=64, use_wscale=use_wscale)))
-#             with tf.variable_scope('DenseQ34'):
-#                 q3 = apply_bias(dense(q3, fmaps=2, use_wscale=use_wscale))
-
-#             with tf.variable_scope('DenseQ41'):
-#                 q4 = act(apply_bias(dense(q4, fmaps=256, use_wscale=use_wscale)))
-#             with tf.variable_scope('DenseQ42'):
-#                 q4 = act(apply_bias(dense(q4, fmaps=128, use_wscale=use_wscale)))
-#             with tf.variable_scope('DenseQ43'):
-#                 q4 = act(apply_bias(dense(q4, fmaps=64, use_wscale=use_wscale)))
-#             with tf.variable_scope('DenseQ44'):
-#                 q4 = apply_bias(dense(q4, fmaps=10, use_wscale=use_wscale))
-
-#             with tf.variable_scope('DenseQ51'):
-#                 q5 = act(apply_bias(dense(q5, fmaps=256, use_wscale=use_wscale)))
-#             with tf.variable_scope('DenseQ52'):
-#                 q5 = act(apply_bias(dense(q5, fmaps=128, use_wscale=use_wscale)))
-#             with tf.variable_scope('DenseQ53'):
-#                 q5 = act(apply_bias(dense(q5, fmaps=64, use_wscale=use_wscale)))
-#             with tf.variable_scope('DenseQ54'):
-#                 q5 = apply_bias(dense(q5, fmaps=2, use_wscale=use_wscale))
-        
-#             return q3, q4, q5
     
     # Linear structure: simple but inefficient.
     if structure == 'linear':
@@ -331,62 +294,62 @@ def D_paper(
         x = fromrgb(img, resolution_log2)
         for res in range(resolution_log2, 2, -1):
             lod = resolution_log2 - res
-            x = block(x, res)
+            x= block(x, res)
             img = downscale2d(img)
             y = fromrgb(img, res - 1)
             with tf.variable_scope('Grow_lod%d' % lod):
                 x = lerp_clip(x, y, lod_in - lod)
         combo_out = block(x, 2)
-#         combo_out = tf.Print(combo_out, [qInput], message="qInput")
-        # Start of Q network
-#         q3, q4, q5 = qNetwork(qInputB, 2)
-
+    
     # Recursive structure: complex but efficient.
     if structure == 'recursive':
         def grow(res, lod):
+            #lod = tf.print(lod, [lod])
             x = lambda: fromrgb(downscale2d(images_in, 2**lod), res)
             if lod > 0: x = cset(x, (lod_in < lod), lambda: grow(res + 1, lod - 1))
-            x = block(x(), res); y = lambda: x
+            x= block(x(), res); y = lambda: x
             if res > 2: y = cset(y, (lod_in > lod), lambda: lerp(x, fromrgb(downscale2d(images_in, 2**(lod+1)), res - 1), lod_in - lod))
             return y()
         combo_out = grow(2, resolution_log2 - 2)
+    
+    
+    #combo_out = tf.Print(combo_out, [qInputB], message = "qinput")
+    #print("qInput Shape is", qInputB.shape)
 
-    with tf.variable_scope('DenseQ31'):
+    with tf.variable_scope('Denseq31'):
         q3 = act(apply_bias(dense(qInputB, fmaps=256, use_wscale=use_wscale)))
-    with tf.variable_scope('DenseQ32'):
+    with tf.variable_scope('Denseq32'):
         q3 = act(apply_bias(dense(q3, fmaps=128, use_wscale=use_wscale)))
-    with tf.variable_scope('DenseQ33'):
+    with tf.variable_scope('Denseq33'):
         q3 = act(apply_bias(dense(q3, fmaps=64, use_wscale=use_wscale)))
-    with tf.variable_scope('DenseQ34'):
-        q3 = apply_bias(dense(q3, fmaps=1, use_wscale=use_wscale))
+    with tf.variable_scope('Denseq3'):
+        q3 = tf.nn.sigmoid(apply_bias(dense(q3, fmaps=1, use_wscale=use_wscale)))
+    #print("q3 Shape is", q3.shape)
 
-    with tf.variable_scope('DenseQ41'):
+    with tf.variable_scope('Denseq41'):
         q4 = act(apply_bias(dense(qInputB, fmaps=256, use_wscale=use_wscale)))
-    with tf.variable_scope('DenseQ42'):
+    with tf.variable_scope('Denseq42'):
         q4 = act(apply_bias(dense(q4, fmaps=128, use_wscale=use_wscale)))
-    with tf.variable_scope('DenseQ43'):
+    with tf.variable_scope('Denseq43'):
         q4 = act(apply_bias(dense(q4, fmaps=64, use_wscale=use_wscale)))
-    with tf.variable_scope('DenseQ44'):
-        q4 = apply_bias(dense(q4, fmaps=10, use_wscale=use_wscale))
+    with tf.variable_scope('Denseq4'):
+        q4 = tf.nn.sigmoid(apply_bias(dense(q4, fmaps=10, use_wscale=use_wscale)))
+    #print("q4 Shape is", q4.shape)
 
-    with tf.variable_scope('DenseQ51'):
+    with tf.variable_scope('Denseq51'):
         q5 = act(apply_bias(dense(qInputB, fmaps=256, use_wscale=use_wscale)))
-    with tf.variable_scope('DenseQ52'):
+    with tf.variable_scope('Denseq52'):
         q5 = act(apply_bias(dense(q5, fmaps=128, use_wscale=use_wscale)))
-    with tf.variable_scope('DenseQ53'):
+    with tf.variable_scope('Denseq53'):
         q5 = act(apply_bias(dense(q5, fmaps=64, use_wscale=use_wscale)))
-    with tf.variable_scope('DenseQ54'):
-        q5 = apply_bias(dense(q5, fmaps=1, use_wscale=use_wscale))
-        
+    with tf.variable_scope('Denseq5'):
+        q5 = tf.nn.sigmoid(apply_bias(dense(q5, fmaps=1, use_wscale=use_wscale)))
+    #print("q5 Shape is", q5.shape)
+    
+    
     assert combo_out.dtype == tf.as_dtype(dtype)
-    assert q3.dtype == tf.as_dtype(dtype)
     scores_out = tf.identity(combo_out[:, :1], name='scores_out')
-#     scores_out = tf.Print(scores_out, [q3, q4, q5], message="q3, q4, q5")
     labels_out = tf.identity(combo_out[:, 1:], name='labels_out')
-    q3_out = tf.identity(q3, name='q3_out')
-#     q3_out = tf.Print(q3_out, [q3_out], message='q3')
-    q4_out = tf.identity(q4, name='q4_out')
-    q5_out = tf.identity(q5, name='q5_out')
-    return scores_out, labels_out, q3_out, q4_out, q5_out
+    return scores_out, labels_out, q3, q4, q5, lod_in
 
 #----------------------------------------------------------------------------
