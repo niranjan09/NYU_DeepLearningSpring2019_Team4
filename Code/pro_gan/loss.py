@@ -58,8 +58,8 @@ def G_wgan_acgan(G, D, opt, training_set, minibatch_size,
     
     
     #print(loss.shape, loss3.shape, loss4.shape, loss5.shape, type(loss), type(loss3))
-    loss = loss + tf.clip_by_value((2 - lod_in), 0.0, 1.0)*(2*loss3 + 0.2*loss4 + 2*loss5)
-    #loss = loss + 2*loss3 + 0.2*loss4 + 2*loss5
+    #loss = loss + tf.clip_by_value((2 - lod_in), 0.0, 1.0)*(2*loss3 + 0.2*loss4 + 2*loss5)
+    loss = loss + 2*loss3 + 0.2*loss4 + 2*loss5
     if D.output_shapes[1][1] > 0:
         with tf.name_scope('LabelPenalty'):
             label_penalty_fakes = tf.nn.softmax_cross_entropy_with_logits_v2(labels=labels, logits=fake_labels_out)

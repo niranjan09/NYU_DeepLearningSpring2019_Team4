@@ -316,28 +316,28 @@ def D_paper(
     #combo_out = tf.Print(combo_out, [qInputB], message = "qinput")
     #print("qInput Shape is", qInputB.shape)
     
-#     qp = fromrgb(images_in, resolution_log2)
-#     with tf.variable_scope('ConvQP1'):
-#         qp = act(apply_bias(conv2d_downscale2d(qp, fmaps = 512, kernel=3, use_wscale=use_wscale)))
-#     with tf.variable_scope('ConvQP2'):
-#         qp = act(apply_bias(conv2d_downscale2d(qp, fmaps = 512, kernel=3, use_wscale=use_wscale)))
-#     with tf.variable_scope('ConvQP3'):
-#         qp = act(apply_bias(conv2d_downscale2d(qp, fmaps = 256, kernel=3, use_wscale=use_wscale)))
-#     with tf.variable_scope('ConvQP4'):
-#         qp = act(apply_bias(conv2d_downscale2d(qp, fmaps = 128, kernel=3, use_wscale=use_wscale)))
+    qp = fromrgb(images_in, resolution_log2)
+    with tf.variable_scope('ConvQP1'):
+     qp = act(apply_bias(conv2d_downscale2d(qp, fmaps = 128, kernel=3, use_wscale=use_wscale)))
+    with tf.variable_scope('ConvQP2'):
+        qp = act(apply_bias(conv2d_downscale2d(qp, fmaps = 64, kernel=3, use_wscale=use_wscale)))
+    with tf.variable_scope('ConvQP3'):
+        qp = act(apply_bias(conv2d_downscale2d(qp, fmaps = 64, kernel=3, use_wscale=use_wscale)))
+    with tf.variable_scope('ConvQP4'):
+        qp = act(apply_bias(conv2d_downscale2d(qp, fmaps = 64, kernel=3, use_wscale=use_wscale)))
     
     with tf.variable_scope('Denseq31'):
-        q3 = act(apply_bias(dense(qInputB, fmaps=128, use_wscale=use_wscale)))
+        q3 = act(apply_bias(dense(qp, fmaps=64, use_wscale=use_wscale)))
     with tf.variable_scope('Denseq32'):
-        q3 = act(apply_bias(dense(q3, fmaps=64, use_wscale=use_wscale)))
-    with tf.variable_scope('Denseq33'):
         q3 = act(apply_bias(dense(q3, fmaps=32, use_wscale=use_wscale)))
+    with tf.variable_scope('Denseq33'):
+        q3 = act(apply_bias(dense(q3, fmaps=16, use_wscale=use_wscale)))
     with tf.variable_scope('Denseq3'):
         q3 = tf.nn.sigmoid(apply_bias(dense(q3, fmaps=1, use_wscale=use_wscale)))
     #print("q3 Shape is", q3.shape)
 
     with tf.variable_scope('Denseq41'):
-        q4 = act(apply_bias(dense(qInputB, fmaps=128, use_wscale=use_wscale)))
+        q4 = act(apply_bias(dense(qp, fmaps=128, use_wscale=use_wscale)))
     with tf.variable_scope('Denseq42'):
         q4 = act(apply_bias(dense(q4, fmaps=64, use_wscale=use_wscale)))
     with tf.variable_scope('Denseq43'):
@@ -347,11 +347,11 @@ def D_paper(
     #print("q4 Shape is", q4.shape)
 
     with tf.variable_scope('Denseq51'):
-        q5 = act(apply_bias(dense(qInputB, fmaps=128, use_wscale=use_wscale)))
+        q5 = act(apply_bias(dense(qp, fmaps=64, use_wscale=use_wscale)))
     with tf.variable_scope('Denseq52'):
-        q5 = act(apply_bias(dense(q5, fmaps=64, use_wscale=use_wscale)))
-    with tf.variable_scope('Denseq53'):
         q5 = act(apply_bias(dense(q5, fmaps=32, use_wscale=use_wscale)))
+    with tf.variable_scope('Denseq53'):
+        q5 = act(apply_bias(dense(q5, fmaps=16, use_wscale=use_wscale)))
     with tf.variable_scope('Denseq5'):
         q5 = tf.nn.sigmoid(apply_bias(dense(q5, fmaps=1, use_wscale=use_wscale)))
     #print("q5 Shape is", q5.shape)
