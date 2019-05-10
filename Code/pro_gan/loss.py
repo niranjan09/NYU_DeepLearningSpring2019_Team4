@@ -49,26 +49,26 @@ def G_wgan_acgan(G, D, opt, training_set, minibatch_size,
     loss = -fake_scores_out
     
     loss3 = tf.losses.mean_squared_error(c_3, qf3)
-    #loss3 = tf.Print(loss3, [loss3], message="loss3")
+    #loss = tf.Print(loss, [loss3], message="loss3")
     loss4 = tf.nn.softmax_cross_entropy_with_logits_v2(labels=c_4, logits=qf4)
-    #loss4 = tf.Print(loss4, [tf.reduce_mean(loss4)], message="loss4")
+    #loss = tf.Print(loss, [tf.reduce_mean(loss4)], message="loss4")
     loss5 = tf.losses.mean_squared_error(c_5, qf5)
-    #loss5 = tf.Print(loss5, [loss5], message="loss5")
-    #loss = tf.Print(loss, [tf.reduce_mean(loss)], message="loss")
+    #loss = tf.Print(loss, [loss5], message="loss5")
+    #loss = tf.Print(loss, [tf.reduce_mean(loss), loss3, tf.reduce_mean(loss4), loss5, tf.reduce_mean(loss + loss3 +loss4+loss5)], message="loss")
     
     
     #print(loss.shape, loss3.shape, loss4.shape, loss5.shape, type(loss), type(loss3))
     loss = loss + tf.clip_by_value((2 - lod_in), 0.0, 1.0)*(2*loss3 + 0.2*loss4 + 2*loss5)
-    #loss = loss + loss3 + loss4 + loss5
+    #loss = loss + 2*loss3 + 0.2*loss4 + 2*loss5
     if D.output_shapes[1][1] > 0:
         with tf.name_scope('LabelPenalty'):
             label_penalty_fakes = tf.nn.softmax_cross_entropy_with_logits_v2(labels=labels, logits=fake_labels_out)
         loss += label_penalty_fakes * cond_weight
-    loss = tfutil.autosummary('Loss/GInfoLoss3', loss3)
-    loss = tfutil.autosummary('Loss/GInfoLoss4', loss4)
-    loss = tfutil.autosummary('Loss/GInfoLoss5', loss5)    
+    #loss = tfutil.autosummary('Loss/GInfoLoss3', loss3)
+    #loss = tfutil.autosummary('Loss/GInfoLoss4', loss4)
+    #loss = tfutil.autosummary('Loss/GInfoLoss5', loss5)    
     loss = tfutil.autosummary('Loss/GFinalLoss', loss)
-    return loss
+    return loss, loss3+loss4+loss5
 
 #----------------------------------------------------------------------------
 # Discriminator loss function used in the paper (WGAN-GP + AC-GAN).

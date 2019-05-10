@@ -277,7 +277,6 @@ class Optimizer:
     # Intended to be called once per GPU.
     def register_gradients(self, loss, vars):
         assert not self._updates_applied
-
         # Validate arguments.
         if isinstance(vars, dict):
             vars = list(vars.values()) # allow passing in Network.trainables as vars
@@ -297,8 +296,13 @@ class Optimizer:
                 self._dev_opt[dev] = self.optimizer_class(name=opt_name, learning_rate=self.learning_rate, **self.optimizer_kwargs)
                 self._dev_grads[dev] = []
             loss = self.apply_loss_scaling(tf.cast(loss, tf.float32))
-            grads = self._dev_opt[dev].compute_gradients(loss, vars, gate_gradients=tf.train.Optimizer.GATE_NONE) # disable gating to reduce memory usage
+            #print("vars are:.....................", vars)
+            grads = self._dev_opt[dev].compute_gradients(loss, vars, gate_gradients=tf.train.Optimizer.GATE_OP) # disable gating to reduce memory usage
+            for g, v in grads:
+                if g is None:
+                    print(v)
             grads = [(g, v) if g is not None else (tf.zeros_like(v), v) for g, v in grads] # replace disconnected gradients with zeros
+            
             self._dev_grads[dev].append(grads)
 
     # Construct training op to update the registered variables based on their gradients.
@@ -366,6 +370,7 @@ class Optimizer:
                             ops.append(autosummary(self.id + '/overflow_frequency', tf.where(grad_ok, 0, 1)))
                             if self.use_loss_scaling:
                                 ops.append(autosummary(self.id + '/loss_scaling_log2', ls_var))
+                                
 
             # Initialize variables and group everything into a single op.
             self.reset_optimizer_state()
