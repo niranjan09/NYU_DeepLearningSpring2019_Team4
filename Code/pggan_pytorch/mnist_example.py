@@ -68,16 +68,18 @@ for f in [opt.outf, opt.outl, opt.outm]:
 # Model creation and init
 G = Generator(max_res=MAX_RES, nch=opt.nch, nc=1, bn=opt.BN, ws=opt.WS, pn=opt.PN).to(DEVICE)
 D = Discriminator(max_res=MAX_RES, nch=opt.nch, nc=1, bn=opt.BN, ws=opt.WS).to(DEVICE)
+DOut = DiscriminatorActivation(max_res=MAX_RES, nch=opt.nch, nc=1, bn=opt.BN, ws=opt.WS).to(DEVICE)
 if not opt.WS:
     # weights are initialized by WScale layers to normal if WS is used
     G.apply(weights_init)
     D.apply(weights_init)
+    DOut.apply(weights_init)
 Gs = copy.deepcopy(G)
 
-optimizerG = Adam(G.parameters(), lr=1e-3, betas=(0, 0.99))
-optimizerD = Adam(D.parameters(), lr=1e-3, betas=(0, 0.99))
+optimizerG = Adam(G.parameters(), lr=1e-4, betas=(0, 0.99))
+optimizerD = Adam([{'params':D.parameters()}, {'params':DOut.parameters()}], lr=1e-4, betas=(0, 0.99))
 
-GP = GradientPenalty(opt.batchSizes[0], opt.lambdaGP, opt.gamma, device=DEVICE)
+# GP = GradientPenalty(opt.batchSizes[0], opt.lambdaGP, opt.gamma, device=DEVICE)
 
 epoch = 0
 global_step = 0
@@ -89,8 +91,13 @@ P = Progress(opt.n_iter, MAX_RES, opt.batchSizes)
 
 z_save = hypersphere(torch.randn(opt.savenum, opt.nch * 32, 1, 1, device=DEVICE))
 
+# custom high quality infogan variables
+real_label = 1
+fake_label = 0
+lossFunc = nn.BCELoss()
+
 P.progress(epoch, 1, total)
-GP.batchSize = P.batchSize
+# GP.batchSize = P.batchSize
 # Creation of DataLoader
 data_loader = DataLoader(dataset,
                          batch_size=P.batchSize,
@@ -113,7 +120,7 @@ while True:
 
     if P.batchSize != data_loader.batch_size:
         # update batch-size in gradient penalty
-        GP.batchSize = P.batchSize
+        # GP.batchSize = P.batchSize
         # modify DataLoader at each change in resolution to vary the batch-size as the resolution increases
         data_loader = DataLoader(dataset,
                                  batch_size=P.batchSize,
@@ -141,28 +148,42 @@ while True:
         with torch.no_grad():
             fake_images = G(z, P.p)
 
+        labels = torch.full((P.batchSize,), real_label, device=DEVICE)
+
         # compute scores for real images
         D_real = D(images, P.p)
-        D_realm = D_real.mean()
+        D_real_prob = DOut(D_real)
+        # D_realm = D_real.mean()
+
+        # real loss
+        labels.fill_(real_label)
+        d_loss_real = lossFunc(D_real_prob, labels)
+        d_loss_real.backward()
 
         # compute scores for fake images
         D_fake = D(fake_images, P.p)
-        D_fakem = D_fake.mean()
+        D_fake_prob = DOut(D_fake)
+        # D_fakem = D_fake.mean()
+
+        # fake loss
+        labels.fill_(fake_label)
+        d_loss_fake = lossFunc(D_fake_prob, labels)
+        d_loss_fake.backward()
 
         # compute gradient penalty for WGAN-GP as defined in the article
-        gradient_penalty = GP(D, images.data, fake_images.data, P.p)
+        # gradient_penalty = GP(D, images.data, fake_images.data, P.p)
 
         # prevent D_real from drifting too much from 0
-        drift = (D_real ** 2).mean() * opt.e_drift
+        # drift = (D_real ** 2).mean() * opt.e_drift
 
         # Backprop + Optimize
-        d_loss = D_fakem - D_realm
-        d_loss_W = d_loss + gradient_penalty + drift
-        d_loss_W.backward()
+        d_loss = d_loss_real + d_loss_fake
+        # d_loss_W = d_loss + gradient_penalty + drift
+        # d_loss_W.backward()
         optimizerD.step()
 
         lossEpochD.append(d_loss.item())
-        lossEpochD_W.append(d_loss_W.item())
+        # lossEpochD_W.append(d_loss_W.item())
 
         # =============== Train the generator ===============#
 
@@ -172,12 +193,17 @@ while True:
         fake_images = G(z, P.p)
         # compute scores with new fake images
         G_fake = D(fake_images, P.p)
-        G_fakem = G_fake.mean()
+        G_fake_prob = DOut(G_fake)
+        # G_fakem = G_fake.mean()
         # no need to compute D_real as it does not affect G
-        g_loss = -G_fakem
+        # g_loss = -G_fakem
+
+        # calculate loss
+        labels.fill_(fake_label)
+        g_loss = lossFunc(G_fake_prob, labels)
+        g_loss.backward()
 
         # Optimize
-        g_loss.backward()
         optimizerG.step()
 
         lossEpochG.append(g_loss.item())
@@ -189,8 +215,9 @@ while True:
                          length=20,
                          prefix=f'Epoch {epoch} ',
                          suffix=f', d_loss: {d_loss.item():.3f}'
-                                f', d_loss_W: {d_loss_W.item():.3f}'
-                                f', GP: {gradient_penalty.item():.3f}'
+                                f', g_loss: {g_loss.item():.3f}'
+                                # f', d_loss_W: {d_loss_W.item():.3f}'
+                                # f', GP: {gradient_penalty.item():.3f}'
                                 f', progress: {P.p:.2f}')
 
     printProgressBar(total, total,
