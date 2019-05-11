@@ -103,7 +103,8 @@ for yyy in range(7):
     for xxx in range(8):
         z_save1[xxx][115:126] = 0.0
         z_save1[xxx][115 + xxx] = 1
-        z_save1[xxx][127] = 0.1 * xxx
+        z_save1[xxx][126] = 0.125 * xxx
+        z_save1[xxx][127] = 0.125 * xxx
     z_save = torch.cat((z_save, z_save1), dim=0)
 
 P.progress(epoch, 1, total)
@@ -250,6 +251,7 @@ while True:
     printProgressBar(total, total,
                      done=f'Epoch [{epoch:>3d}]  d_loss: {np.mean(lossEpochD):.4f}'
                           f', d_loss_W: {np.mean(lossEpochD_W):.3f}'
+                          f', g_loss: {np.mean(lossEpochG):.4f}'
                           f', progress: {P.p:.2f}, time: {time() - t0:.2f}s'
                      )
 
