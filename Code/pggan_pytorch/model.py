@@ -96,9 +96,13 @@ class Discriminator(nn.Module):
         # last block, always present
         self.blocks.append(nn.Sequential(OrderedDict([
             ('conv_std', conv(nch * 32 + 1, nch * 32, bn=bn, ws=ws, activ=activ)),
-            ('conv_pool', conv(nch * 32, nch * 32, kernel_size=4, padding=0, bn=bn, ws=ws, activ=activ)),
+            ('conv_pool', conv(nch * 32, nch * 32, kernel_size=4, padding=0, bn=bn, ws=ws, activ=activ))
             # ('conv_class', conv(nch * 32, 1, kernel_size=1, padding=0, ws=ws, gainWS=1, activ=None))
         ])))
+        self.activationBlock = nn.ModuleList()
+        self.activationBlock.append((nn.Sequential(OrderedDict([
+            ('conv_class', conv(nch * 32, 1, kernel_size=1, padding=0, ws=ws, gainWS=1, activ=None))
+        ]))))
         for i in range(self.max_res):
             nin = int(nch * 2 ** (8 - max(3, i + 1)))
             nout = int(nch * 2 ** (8 - max(3, i)))
@@ -140,20 +144,11 @@ class Discriminator(nn.Module):
             y0 = self.blocks[i](y0)
             y0 = F.avg_pool2d(y0, kernel_size=2, stride=2)
 
-        y = self.blocks[0](torch.cat((y0, self.minibatchstd(y0).expand_as(y0[:, 0].unsqueeze(1))), dim=1))
+        yaaa = self.blocks[0](torch.cat((y0, self.minibatchstd(y0).expand_as(y0[:, 0].unsqueeze(1))), dim=1))
+        y = self.activationBlock[0](yaaa)
 
-        return y
+        return y.squeeze(), yaaa
 
-class DiscriminatorActivation(nn.Module):
-    def __init__(self, max_res=8, nch=16, nc=3, bn=False, ws=False, activ=nn.LeakyReLU(0.2)):
-        super(DiscriminatorActivation, self).__init__()
-
-        self.conv = nn.Conv2d(nch * 32, 1, 1)
-
-    def forward(self, x):
-        output = torch.sigmoid(self.conv(x))
-
-        return output.squeeze()
 
 class QNetwork(nn.Module):
     def __init__(self, max_res=8, nch=16, nc=3, bn=False, ws=False, activ=nn.LeakyReLU(0.2)):
@@ -175,6 +170,7 @@ class QNetwork(nn.Module):
         var = torch.exp(self.conv_var(x).squeeze())
 
         return disc_logits, mu, var
+
 
 if __name__ == '__main__':
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')

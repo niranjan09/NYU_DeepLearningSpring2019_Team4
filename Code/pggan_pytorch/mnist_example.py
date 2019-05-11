@@ -41,13 +41,14 @@ parser.add_argument('--e_drift', type=float, default=0.001, help='epsilon drift 
 parser.add_argument('--saveimages', type=int, default=1, help='number of epochs between saving image examples')
 parser.add_argument('--savenum', type=int, default=64, help='number of examples images to save')
 parser.add_argument('--savemodel', type=int, default=10, help='number of epochs between saving models')
-parser.add_argument('--savemaxsize', action='store_true', help='save sample images at max resolution instead of real resolution')
+parser.add_argument('--savemaxsize', action='store_true',
+                    help='save sample images at max resolution instead of real resolution')
 
 opt = parser.parse_args()
 print(opt)
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-MAX_RES = 3 # for 32x32 output
+MAX_RES = 3  # for 32x32 output
 
 transform = transforms.Compose([
     # resize to 32x32
@@ -68,18 +69,24 @@ for f in [opt.outf, opt.outl, opt.outm]:
 # Model creation and init
 G = Generator(max_res=MAX_RES, nch=opt.nch, nc=1, bn=opt.BN, ws=opt.WS, pn=opt.PN).to(DEVICE)
 D = Discriminator(max_res=MAX_RES, nch=opt.nch, nc=1, bn=opt.BN, ws=opt.WS).to(DEVICE)
-DOut = DiscriminatorActivation(max_res=MAX_RES, nch=opt.nch, nc=1, bn=opt.BN, ws=opt.WS).to(DEVICE)
+Q = QNetwork(max_res=MAX_RES, nch=opt.nch, nc=1, bn=opt.BN, ws=opt.WS).to(DEVICE)
 if not opt.WS:
     # weights are initialized by WScale layers to normal if WS is used
     G.apply(weights_init)
     D.apply(weights_init)
-    DOut.apply(weights_init)
 Gs = copy.deepcopy(G)
+Q.apply(weights_init)
 
-optimizerG = Adam(G.parameters(), lr=1e-4, betas=(0, 0.99))
-optimizerD = Adam([{'params':D.parameters()}, {'params':DOut.parameters()}], lr=1e-4, betas=(0, 0.99))
+optimizerG = Adam(G.parameters(), lr=1e-3, betas=(0, 0.99))
+optimizerD = Adam(D.parameters(), lr=1e-3, betas=(0, 0.99))
+optimizerQ = Adam([{'params': G.parameters()}, {'params': Q.parameters()}], lr=1e-3, betas=(0, 0.99))
 
-# GP = GradientPenalty(opt.batchSizes[0], opt.lambdaGP, opt.gamma, device=DEVICE)
+# Loss for discrete latent code.
+criterionQ_dis = nn.CrossEntropyLoss()
+# Loss for continuous latent code.
+criterionQ_con = NormalNLLLoss()
+
+GP = GradientPenalty(opt.batchSizes[0], opt.lambdaGP, opt.gamma, device=DEVICE)
 
 epoch = 0
 global_step = 0
@@ -91,13 +98,8 @@ P = Progress(opt.n_iter, MAX_RES, opt.batchSizes)
 
 z_save = hypersphere(torch.randn(opt.savenum, opt.nch * 32, 1, 1, device=DEVICE))
 
-# custom high quality infogan variables
-real_label = 1
-fake_label = 0
-lossFunc = nn.BCELoss()
-
 P.progress(epoch, 1, total)
-# GP.batchSize = P.batchSize
+GP.batchSize = P.batchSize
 # Creation of DataLoader
 data_loader = DataLoader(dataset,
                          batch_size=P.batchSize,
@@ -120,7 +122,7 @@ while True:
 
     if P.batchSize != data_loader.batch_size:
         # update batch-size in gradient penalty
-        # GP.batchSize = P.batchSize
+        GP.batchSize = P.batchSize
         # modify DataLoader at each change in resolution to vary the batch-size as the resolution increases
         data_loader = DataLoader(dataset,
                                  batch_size=P.batchSize,
@@ -144,67 +146,68 @@ while True:
         # zeroing gradients in D
         D.zero_grad()
         # compute fake images with G
-        z = hypersphere(torch.randn(P.batchSize, opt.nch * 32, 1, 1, device=DEVICE))
+        #         z = hypersphere(torch.randn(P.batchSize, opt.nch * 32, 1, 1, device=DEVICE))
+        z, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, P.batchSize, device=DEVICE)
         with torch.no_grad():
             fake_images = G(z, P.p)
 
-        labels = torch.full((P.batchSize,), real_label, device=DEVICE)
-
         # compute scores for real images
-        D_real = D(images, P.p)
-        D_real_prob = DOut(D_real)
-        # D_realm = D_real.mean()
-
-        # real loss
-        labels.fill_(real_label)
-        d_loss_real = lossFunc(D_real_prob, labels)
-        d_loss_real.backward()
+        D_real, yaa = D(images, P.p)
+        D_realm = D_real.mean()
 
         # compute scores for fake images
-        D_fake = D(fake_images, P.p)
-        D_fake_prob = DOut(D_fake)
-        # D_fakem = D_fake.mean()
-
-        # fake loss
-        labels.fill_(fake_label)
-        d_loss_fake = lossFunc(D_fake_prob, labels)
-        d_loss_fake.backward()
+        D_fake, yaa = D(fake_images, P.p)
+        D_fakem = D_fake.mean()
 
         # compute gradient penalty for WGAN-GP as defined in the article
-        # gradient_penalty = GP(D, images.data, fake_images.data, P.p)
+        gradient_penalty = GP(D, images.data, fake_images.data, P.p)
 
         # prevent D_real from drifting too much from 0
-        # drift = (D_real ** 2).mean() * opt.e_drift
+        drift = (D_real ** 2).mean() * opt.e_drift
 
         # Backprop + Optimize
-        d_loss = d_loss_real + d_loss_fake
-        # d_loss_W = d_loss + gradient_penalty + drift
-        # d_loss_W.backward()
+        d_loss = D_fakem - D_realm
+        d_loss_W = d_loss + gradient_penalty + drift
+        d_loss_W.backward()
         optimizerD.step()
 
         lossEpochD.append(d_loss.item())
-        # lossEpochD_W.append(d_loss_W.item())
+        lossEpochD_W.append(d_loss_W.item())
 
         # =============== Train the generator ===============#
 
         G.zero_grad()
 
-        z = hypersphere(torch.randn(P.batchSize, opt.nch * 32, 1, 1, device=DEVICE))
+        #         z = hypersphere(torch.randn(P.batchSize, opt.nch * 32, 1, 1, device=DEVICE))
+        z, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, P.batchSize, device=DEVICE)
         fake_images = G(z, P.p)
         # compute scores with new fake images
-        G_fake = D(fake_images, P.p)
-        G_fake_prob = DOut(G_fake)
-        # G_fakem = G_fake.mean()
+        G_fake, yaa = D(fake_images, P.p)
+        G_fakem = G_fake.mean()
         # no need to compute D_real as it does not affect G
-        # g_loss = -G_fakem
-
-        # calculate loss
-        labels.fill_(fake_label)
-        g_loss = lossFunc(G_fake_prob, labels)
-        g_loss.backward()
+        g_loss = -G_fakem
 
         # Optimize
+        g_loss.backward(retain_graph=True)
         optimizerG.step()
+
+        # ============== Q network ===================
+        q_logits, q_mu, q_var = Q(yaa)
+
+        target = torch.LongTensor(idx).to(DEVICE)
+        # Calculating loss for discrete latent code.
+        dis_loss = 0
+        dis_loss += criterionQ_dis(q_logits[:, 0: 10], target[0])
+
+        # Calculating loss for continuous latent code.
+        con_loss = 0
+        con_array = z[:, opt.nch * 32 - 2:].view(-1, 2)
+        con_loss = criterionQ_con(con_array, q_mu, q_var) * 0.1
+        # =================== End Q Network ===================
+
+        q_loss = con_loss + dis_loss
+        q_loss.backward()
+        optimizerQ.step()
 
         lossEpochG.append(g_loss.item())
 
@@ -215,9 +218,8 @@ while True:
                          length=20,
                          prefix=f'Epoch {epoch} ',
                          suffix=f', d_loss: {d_loss.item():.3f}'
-                                f', g_loss: {g_loss.item():.3f}'
-                                # f', d_loss_W: {d_loss_W.item():.3f}'
-                                # f', GP: {gradient_penalty.item():.3f}'
+                                f', d_loss_W: {d_loss_W.item():.3f}'
+                                f', GP: {gradient_penalty.item():.3f}'
                                 f', progress: {P.p:.2f}')
 
     printProgressBar(total, total,
