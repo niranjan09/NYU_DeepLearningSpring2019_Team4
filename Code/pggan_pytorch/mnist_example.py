@@ -97,15 +97,15 @@ g_losses = np.array([])
 P = Progress(opt.n_iter, MAX_RES, opt.batchSizes)
 
 # z_save = hypersphere(torch.randn(opt.savenum, opt.nch * 32, 1, 1, device=DEVICE))
-z_save, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 8, device=DEVICE)
-for yyy in range(7):
-    z_save1, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 8, device=DEVICE)
-    for xxx in range(8):
-        z_save1[xxx][115:126] = 0.0
-        z_save1[xxx][115 + xxx] = 1
-        z_save1[xxx][126] = 0.125 * xxx
-        z_save1[xxx][127] = 0.125 * xxx
-    z_save = torch.cat((z_save, z_save1), dim=0)
+# z_save, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 8, device=DEVICE)
+# for yyy in range(7):
+#     z_save1, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 8, device=DEVICE)
+#     for xxx in range(8):
+#         z_save1[xxx][115:126] = 0.0
+#         z_save1[xxx][115 + xxx] = 1
+#         z_save1[xxx][126] = 0.125 * xxx
+#         z_save1[xxx][127] = 0.125 * xxx
+#     z_save = torch.cat((z_save, z_save1), dim=0)
 
 P.progress(epoch, 1, total)
 GP.batchSize = P.batchSize
@@ -245,6 +245,8 @@ while True:
                          suffix=f', d_loss: {d_loss.item():.3f}'
                                 f', d_loss_W: {d_loss_W.item():.3f}'
                                 f', g_loss: {g_loss.item():.3f}'
+                         #                                 f', dis_loss: {dis_loss.item():.3f}'
+                         #                                 f', con_loss: {con_loss.item():.3f}'
                                 f', GP: {gradient_penalty.item():.3f}'
                                 f', progress: {P.p:.2f}')
 
@@ -272,12 +274,36 @@ while True:
         ax.set_xlabel('epoch')
         ax.set_ylabel('Loss')
         ax.set_title(f'Progress: {P.p:.2f}')
-        plt.savefig(os.path.join(opt.outd, opt.outl, f'Epoch_{epoch}.png'), dpi=200, bbox_inches='tight')
+        plt.savefig(os.path.join(opt.outd, opt.outl, f'D_Epoch_{epoch}.png'), dpi=200, bbox_inches='tight')
+        plt.clf()
+
+        ax = plt.subplot()
+        ax.plot(np.linspace(0, epoch + 1, len(g_losses)), g_losses, '-b', label='g_loss', linewidth=0.1)
+        ax.legend(loc=1)
+        ax.set_xlabel('epoch')
+        ax.set_ylabel('Loss')
+        ax.set_title(f'Progress: {P.p:.2f}')
+        plt.savefig(os.path.join(opt.outd, opt.outl, f'G_Epoch_{epoch}.png'), dpi=200, bbox_inches='tight')
         plt.clf()
 
         # Save sampled images with Gs
         Gs.eval()
         # z = hypersphere(torch.randn(opt.savenum, opt.nch * 32, 1, 1, device=DEVICE))
+
+        # Generate images with varying discrete and both continuous variables
+        z_save = None  # , idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 1, device=DEVICE)
+        for yyy in range(8):
+            z_save1, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 1, device=DEVICE)
+            z_save1 = z_save1.repeat(8, 1, 1, 1)
+            for xxx in range(8):
+                z_save1[xxx][115:126] = 0.0
+                z_save1[xxx][115 + xxx] = 1
+                z_save1[xxx][126] = -2 + (0.5 * xxx)
+                z_save1[xxx][127] = -2 + (0.5 * xxx)
+            if yyy == 0:
+                z_save = z_save1
+            else:
+                z_save = torch.cat((z_save, z_save1), dim=0)
 
         with torch.no_grad():
             fake_images = Gs(z_save, P.p)
@@ -288,6 +314,85 @@ while True:
                    os.path.join(opt.outd, opt.outf, f'fake_images-{epoch:04d}-p{P.p:.2f}.png'),
                    nrow=8, pad_value=0,
                    normalize=True, range=(-1, 1))
+        # --------------------------------------------------------------------------------
+
+        # Generate images with varying discrete variable and constant first and second continuous variables
+        z_save = None  # , idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 1, device=DEVICE)
+        for yyy in range(8):
+            z_save1, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 1, device=DEVICE)
+            z_save1 = z_save1.repeat(8, 1, 1, 1)
+            for xxx in range(8):
+                z_save1[xxx][115:126] = 0.0
+                z_save1[xxx][115 + xxx] = 1
+                z_save1[xxx][126] = 0
+                z_save1[xxx][127] = 0
+            if yyy == 0:
+                z_save = z_save1
+            else:
+                z_save = torch.cat((z_save, z_save1), dim=0)
+
+        with torch.no_grad():
+            fake_images = Gs(z_save, P.p)
+            if opt.savemaxsize:
+                if fake_images.size(-1) != 4 * 2 ** MAX_RES:
+                    fake_images = F.upsample(fake_images, 4 * 2 ** MAX_RES)
+        save_image(fake_images,
+                   os.path.join(opt.outd, opt.outf, f'dis_varying_fake_images-{epoch:04d}-p{P.p:.2f}.png'),
+                   nrow=8, pad_value=0,
+                   normalize=True, range=(-1, 1))
+        # --------------------------------------------------------------------------------
+
+        # Generate images with constant discrete and first varying and second constant continuous variables
+        z_save = None  # , idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 1, device=DEVICE)
+        for yyy in range(8):
+            z_save1, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 1, device=DEVICE)
+            z_save1 = z_save1.repeat(8, 1, 1, 1)
+            for xxx in range(8):
+                z_save1[xxx][115:126] = 0.0
+                z_save1[xxx][115 + 3] = 1
+                z_save1[xxx][126] = -2 + (0.5 * xxx)
+                z_save1[xxx][127] = 0
+            if yyy == 0:
+                z_save = z_save1
+            else:
+                z_save = torch.cat((z_save, z_save1), dim=0)
+
+        with torch.no_grad():
+            fake_images = Gs(z_save, P.p)
+            if opt.savemaxsize:
+                if fake_images.size(-1) != 4 * 2 ** MAX_RES:
+                    fake_images = F.upsample(fake_images, 4 * 2 ** MAX_RES)
+        save_image(fake_images,
+                   os.path.join(opt.outd, opt.outf, f'first_varying_fake_images-{epoch:04d}-p{P.p:.2f}.png'),
+                   nrow=8, pad_value=0,
+                   normalize=True, range=(-1, 1))
+        # --------------------------------------------------------------------------------
+
+        # Generate images with varying discrete and both continuous variables
+        z_save = None  # , idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 1, device=DEVICE)
+        for yyy in range(8):
+            z_save1, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 1, device=DEVICE)
+            z_save1 = z_save1.repeat(8, 1, 1, 1)
+            for xxx in range(8):
+                z_save1[xxx][115:126] = 0.0
+                z_save1[xxx][115 + 3] = 1
+                z_save1[xxx][126] = 0
+                z_save1[xxx][127] = -2 + (0.5 * xxx)
+            if yyy == 0:
+                z_save = z_save1
+            else:
+                z_save = torch.cat((z_save, z_save1), dim=0)
+
+        with torch.no_grad():
+            fake_images = Gs(z_save, P.p)
+            if opt.savemaxsize:
+                if fake_images.size(-1) != 4 * 2 ** MAX_RES:
+                    fake_images = F.upsample(fake_images, 4 * 2 ** MAX_RES)
+        save_image(fake_images,
+                   os.path.join(opt.outd, opt.outf, f'second_varying_fake_images-{epoch:04d}-p{P.p:.2f}.png'),
+                   nrow=8, pad_value=0,
+                   normalize=True, range=(-1, 1))
+        # --------------------------------------------------------------------------------
 
     if P.p >= P.pmax and not epoch % opt.savemodel:
         torch.save(G, os.path.join(opt.outd, opt.outm, f'G_nch-{opt.nch}_epoch-{epoch}.pth'))
