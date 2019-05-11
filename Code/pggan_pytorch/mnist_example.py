@@ -77,9 +77,9 @@ if not opt.WS:
 Gs = copy.deepcopy(G)
 Q.apply(weights_init)
 
-optimizerG = Adam(G.parameters(), lr=1e-3, betas=(0, 0.99))
+optimizerG = Adam([{'params': G.parameters()}, {'params': Q.parameters()}], lr=1e-3, betas=(0, 0.99))
 optimizerD = Adam(D.parameters(), lr=1e-3, betas=(0, 0.99))
-optimizerQ = Adam([{'params': G.parameters()}, {'params': Q.parameters()}], lr=1e-3, betas=(0, 0.99))
+# optimizerQ = Adam([{'params': G.parameters()}, {'params':Q.parameters()}], lr=1e-3, betas=(0, 0.99))
 
 # Loss for discrete latent code.
 criterionQ_dis = nn.CrossEntropyLoss()
@@ -187,10 +187,6 @@ while True:
         # no need to compute D_real as it does not affect G
         g_loss = -G_fakem
 
-        # Optimize
-        g_loss.backward(retain_graph=True)
-        optimizerG.step()
-
         # ============== Q network ===================
         q_logits, q_mu, q_var = Q(yaa)
 
@@ -205,9 +201,29 @@ while True:
         con_loss = criterionQ_con(con_array, q_mu, q_var) * 0.1
         # =================== End Q Network ===================
 
-        q_loss = con_loss + dis_loss
-        q_loss.backward()
-        optimizerQ.step()
+        g_loss = g_loss + (dis_loss * 0.1) + con_loss
+
+        # Optimize
+        g_loss.backward(retain_graph=True)
+        optimizerG.step()
+
+        #         # ============== Q network ===================
+        #         q_logits, q_mu, q_var = Q(yaa)
+
+        #         target = torch.LongTensor(idx).to(DEVICE)
+        #         # Calculating loss for discrete latent code.
+        #         dis_loss = 0
+        #         dis_loss += criterionQ_dis(q_logits[:, 0 : 10], target[0])
+
+        #         # Calculating loss for continuous latent code.
+        #         con_loss = 0
+        #         con_array = z[:, opt.nch * 32 - 2:].view(-1, 2)
+        #         con_loss = criterionQ_con(con_array, q_mu, q_var) * 0.1
+        #         # =================== End Q Network ===================
+
+        #         q_loss = con_loss + dis_loss
+        #         q_loss.backward()
+        #         optimizerQ.step()
 
         lossEpochG.append(g_loss.item())
 
@@ -219,6 +235,7 @@ while True:
                          prefix=f'Epoch {epoch} ',
                          suffix=f', d_loss: {d_loss.item():.3f}'
                                 f', d_loss_W: {d_loss_W.item():.3f}'
+                                f', g_loss: {g_loss.item():.3f}'
                                 f', GP: {gradient_penalty.item():.3f}'
                                 f', progress: {P.p:.2f}')
 
