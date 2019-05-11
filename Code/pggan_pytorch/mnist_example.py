@@ -96,7 +96,15 @@ d_losses_W = np.array([])
 g_losses = np.array([])
 P = Progress(opt.n_iter, MAX_RES, opt.batchSizes)
 
-z_save = hypersphere(torch.randn(opt.savenum, opt.nch * 32, 1, 1, device=DEVICE))
+# z_save = hypersphere(torch.randn(opt.savenum, opt.nch * 32, 1, 1, device=DEVICE))
+z_save, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 8, device=DEVICE)
+for yyy in range(7):
+    z_save1, idx = noise_sample(1, 10, 2, opt.nch * 32 - 12, 8, device=DEVICE)
+    for xxx in range(8):
+        z_save1[xxx][115:126] = 0.0
+        z_save1[xxx][115 + xxx] = 1
+        z_save1[xxx][127] = 0.1 * xxx
+    z_save = torch.cat((z_save, z_save1), dim=0)
 
 P.progress(epoch, 1, total)
 GP.batchSize = P.batchSize
