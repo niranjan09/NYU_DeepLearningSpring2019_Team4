@@ -30,11 +30,11 @@ def G_wgan_acgan(G, D, opt, training_set, minibatch_size,
     total_latent_size = G.input_shapes[0][1:][0]
     c_size = 1 + 10 + 1
     random_latent_size = total_latent_size - c_size
-    c_3_ind = tf.random_uniform([minibatch_size], 0, 1, dtype = tf.float32)
+    c_3_ind = tf.random_normal([minibatch_size], 0, 1, dtype = tf.float32)
 #     c_3 = tf.one_hot(c_3_ind, 2)
     c_4_ind = tf.random_uniform([minibatch_size], 0, 10, dtype = tf.int32)
     c_4 = tf.one_hot(c_4_ind, 10)
-    c_5_ind = tf.random_uniform([minibatch_size], 0, 1, dtype = tf.float32)
+    c_5_ind = tf.random_normal([minibatch_size], 0, 1, dtype = tf.float32)
 #     c_5 = tf.one_hot(c_5_ind, 2)
     
     test = tf.random_uniform([minibatch_size], 0, 1, dtype = tf.float32)
@@ -58,15 +58,15 @@ def G_wgan_acgan(G, D, opt, training_set, minibatch_size,
     
     
     #print(loss.shape, loss3.shape, loss4.shape, loss5.shape, type(loss), type(loss3))
-    loss = loss + tf.clip_by_value((2 - lod_in), 0.0, 1.0)*(2*loss3 + 0.2*loss4 + 2*loss5)
+    loss = loss + tf.clip_by_value((1 - lod_in), 0.0, 1.0)*(5 * loss3 + 5 * loss5)
     #loss = loss + 2*loss3 + 0.2*loss4 + 2*loss5
     if D.output_shapes[1][1] > 0:
         with tf.name_scope('LabelPenalty'):
             label_penalty_fakes = tf.nn.softmax_cross_entropy_with_logits_v2(labels=labels, logits=fake_labels_out)
         loss += label_penalty_fakes * cond_weight
-    #loss = tfutil.autosummary('Loss/GInfoLoss3', loss3)
-    #loss = tfutil.autosummary('Loss/GInfoLoss4', loss4)
-    #loss = tfutil.autosummary('Loss/GInfoLoss5', loss5)    
+    loss = tfutil.autosummary('Loss/GInfoLoss3', loss3)
+    loss = tfutil.autosummary('Loss/GInfoLoss4', loss4)
+    loss = tfutil.autosummary('Loss/GInfoLoss5', loss5)    
     loss = tfutil.autosummary('Loss/GFinalLoss', loss)
     return loss, loss3+loss4+loss5
 
@@ -82,11 +82,11 @@ def D_wgangp_acgan(G, D, opt, training_set, minibatch_size, reals, labels,
     total_latent_size = G.input_shapes[0][1:][0]
     c_size = 1 + 10 + 1
     random_latent_size = total_latent_size - c_size
-    c_3_ind = tf.random_uniform([minibatch_size], 0, 1, dtype = tf.float32)
+    c_3_ind = tf.random_normal([minibatch_size], 0, 1, dtype = tf.float32)
 #     c_3 = tf.one_hot(c_3_ind, 2)
     c_4_ind = tf.random_uniform([minibatch_size], 0, 10, dtype = tf.int32)
     c_4 = tf.one_hot(c_4_ind, 10)
-    c_5_ind = tf.random_uniform([minibatch_size], 0, 1, dtype = tf.float32)
+    c_5_ind = tf.random_normal([minibatch_size], 0, 1, dtype = tf.float32)
 #     c_5 = tf.one_hot(c_5_ind, 2)
     
     test = tf.random_uniform([minibatch_size], 0, 1, dtype = tf.float32)

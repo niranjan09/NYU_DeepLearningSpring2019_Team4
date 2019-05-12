@@ -298,9 +298,9 @@ class Optimizer:
             loss = self.apply_loss_scaling(tf.cast(loss, tf.float32))
             #print("vars are:.....................", vars)
             grads = self._dev_opt[dev].compute_gradients(loss, vars, gate_gradients=tf.train.Optimizer.GATE_OP) # disable gating to reduce memory usage
-            for g, v in grads:
-                if g is None:
-                    print(v)
+#             for g, v in grads:
+#                 if g is None:
+#                     print(v)
             grads = [(g, v) if g is not None else (tf.zeros_like(v), v) for g, v in grads] # replace disconnected gradients with zeros
             
             self._dev_grads[dev].append(grads)
